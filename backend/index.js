@@ -16,13 +16,27 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Database Connection + Seed + Vector Sync + Server Start
-mongoose
-  .connect(process.env.MONGO_URI)
+const connectDB = async () => {
+  const primaryUri = process.env.MONGO_URI;
+  const localUri = process.env.LOCAL_MONGO_URI || 'mongodb://localhost:27017/Ecommerce-Products';
 
-  .then(async () => {
-    console.log('MongoDB Connected');
+  try {
+    console.log('Connecting to primary MongoDB...');
+    await mongoose.connect(primaryUri, { serverSelectionTimeoutMS: 5000 });
+    console.log('✅ Connected to MongoDB (Primary)');
+  } catch (primaryErr) {
+    console.warn(`⚠️ Primary MongoDB connection failed (${primaryErr.message}). Trying local fallback...`);
+    try {
+      await mongoose.connect(localUri, { serverSelectionTimeoutMS: 5000 });
+      console.log('✅ Connected to MongoDB (Local Fallback)');
+    } catch (localErr) {
+      console.error('❌ Local MongoDB connection failed too:', localErr.message);
+      console.error('⚠️ Server starting without database connection. Product requests will fail until MongoDB is active.');
+    }
+  }
 
-    // 1. Seed the database (only when necessary)
+  // 1. Seed database if connected and empty
+  if (mongoose.connection.readyState === 1) {
     const skipSeed = process.env.SKIP_SEED_ON_START === 'true';
     if (!skipSeed) {
       try {
@@ -40,23 +54,19 @@ mongoose
       console.log('🌱 SKIP_SEED_ON_START enabled. Existing products preserved.');
     }
 
-    // 2. Sync with Pinecone (primary recommendation engine)
-    try {
-      await syncPinecone();
-      console.log('✅ Pinecone synced');
-    } catch (err) {
-      console.error('❌ Pinecone sync error (continuing with fallbacks):', err);
-    }
+    // 2. Sync with Pinecone (in background so startup is not delayed)
+    syncPinecone()
+      .then(() => console.log('✅ Pinecone synced'))
+      .catch(err => console.warn('⚠️ Pinecone sync skipped:', err.message || err));
+  }
 
-    // 3. Start Express server
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server ready on port ${PORT}.`);
-    });
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
+  // 3. Start Express server
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server ready on port ${PORT}.`);
   });
+};
+
+connectDB();
 
 // Middleware
 app.use(cors());
