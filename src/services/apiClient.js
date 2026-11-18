@@ -1,9 +1,31 @@
 import axios from 'axios';
 
+const normalizeUrl = (url = '') => {
+  let cleanUrl = url.trim().replace(/\/$/, '');
+  if (cleanUrl && !cleanUrl.endsWith('/api')) {
+    cleanUrl = `${cleanUrl}/api`;
+  }
+  return cleanUrl;
+};
+
 const resolveBaseURL = () => {
-  const envUrl = process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL;
-  if (envUrl) {
-    return envUrl.replace(/\/$/, '');
+  // Check for React App env vars (Create React App)
+  const craUrl = process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL;
+  if (craUrl) {
+    return normalizeUrl(craUrl);
+  }
+
+  // Support Vite environment variable if provided (e.g. VITE_API_URL or REACT_APP_VITE_API_URL)
+  let viteUrl = '';
+  try {
+    if (typeof process !== 'undefined' && process?.env) {
+      viteUrl = process.env.VITE_API_URL || process.env.REACT_APP_VITE_API_URL;
+    }
+  } catch (e) {
+    // ignore
+  }
+  if (viteUrl) {
+    return normalizeUrl(viteUrl);
   }
 
   if (process.env.REACT_APP_API_USE_PROXY === 'true') {
@@ -11,11 +33,15 @@ const resolveBaseURL = () => {
   }
 
   // When running locally in browser or Node
-  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
     return 'http://localhost:5001/api';
   }
 
-  return 'https://fusion-electronics-api.vercel.app/api';
+  // Default production fallback pointing to Render backend
+  return 'https://techkart-kd9f.onrender.com/api';
 };
 
 export const API_BASE_URL = resolveBaseURL();
